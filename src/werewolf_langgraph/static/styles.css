@@ -1,0 +1,576 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  --bg: #08090d;
+  --panel: rgba(18, 21, 27, 0.82);
+  --panel-strong: rgba(27, 30, 38, 0.94);
+  --text: #f5efe7;
+  --muted: rgba(245, 239, 231, 0.66);
+  --gold: #d8b45b;
+  --red: #c94a45;
+  --blue: #5898d8;
+  --green: #5bbd9b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at 24% 18%, rgba(143, 36, 43, 0.34), transparent 30%),
+    radial-gradient(circle at 76% 82%, rgba(39, 113, 105, 0.28), transparent 34%),
+    linear-gradient(135deg, #0d0f15 0%, #07080b 52%, #0b1b1b 100%);
+  color: var(--text);
+}
+
+button,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  border: 0;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.start-screen {
+  align-items: center;
+  display: grid;
+  min-height: 100vh;
+  overflow: hidden;
+  place-items: center;
+  position: relative;
+  text-align: center;
+}
+
+.start-screen::before,
+.start-screen::after {
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.start-screen::before {
+  background:
+    linear-gradient(to top, rgba(0, 0, 0, 0.86), transparent 42%),
+    radial-gradient(circle at 50% 42%, rgba(216, 180, 91, 0.12), transparent 28%);
+}
+
+.start-screen::after {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: radial-gradient(circle, black, transparent 72%);
+}
+
+.moon {
+  background: radial-gradient(circle at 36% 34%, #fff8d8, #d8b45b 36%, rgba(216, 180, 91, 0.12) 64%, transparent 66%);
+  border-radius: 50%;
+  filter: blur(0.2px);
+  height: 210px;
+  left: 50%;
+  opacity: 0.72;
+  position: absolute;
+  top: 18%;
+  transform: translateX(-50%);
+  width: 210px;
+}
+
+.start-content {
+  position: relative;
+  z-index: 2;
+}
+
+.start-content h1 {
+  font-size: clamp(76px, 14vw, 168px);
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 0.95;
+  margin: 0 0 34px;
+  text-shadow: 0 16px 42px rgba(0, 0, 0, 0.82);
+}
+
+.primary-action {
+  background: linear-gradient(135deg, #f1d17a, #b98a32);
+  border-radius: 8px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.34);
+  color: #171108;
+  cursor: pointer;
+  font-weight: 900;
+  min-height: 48px;
+  padding: 0 24px;
+}
+
+.primary-action:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.65);
+  opacity: 0.52;
+}
+
+.start-status {
+  color: rgba(245, 239, 231, 0.78);
+  font-size: 15px;
+  font-weight: 700;
+  min-height: 24px;
+  margin: 16px 0 0;
+}
+
+.game-screen {
+  margin: 0 auto;
+  max-width: 1240px;
+  min-height: 100vh;
+  padding: 28px;
+}
+
+.game-header {
+  align-items: end;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.eyebrow,
+.phase-mark,
+.role-card-kicker {
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0;
+  margin: 0 0 8px;
+}
+
+.game-header h2 {
+  font-size: clamp(34px, 5vw, 62px);
+  line-height: 1;
+  margin: 0;
+}
+
+.round-info {
+  display: flex;
+  gap: 10px;
+}
+
+.round-info span {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+  color: var(--muted);
+  padding: 8px 12px;
+}
+
+.table-area,
+.phase-stage,
+.event-log {
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.28);
+}
+
+.table-area {
+  padding: 16px;
+}
+
+.players {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+}
+
+.player {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 8px;
+  min-height: 104px;
+  padding: 13px;
+  transition: border-color 240ms ease, box-shadow 240ms ease, transform 240ms ease;
+}
+
+.player.active-speaker {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px rgba(216, 180, 91, 0.16), 0 14px 38px rgba(216, 180, 91, 0.12);
+  transform: translateY(-2px);
+}
+
+.player.dead {
+  filter: grayscale(0.8);
+  opacity: 0.5;
+}
+
+.player strong,
+.player span {
+  display: block;
+}
+
+.player strong {
+  font-size: 18px;
+}
+
+.player span {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 7px;
+}
+
+.phase-stage {
+  margin-top: 16px;
+  min-height: 390px;
+  overflow: hidden;
+  position: relative;
+}
+
+.phase-panel {
+  display: none;
+  min-height: 390px;
+  padding: 34px;
+}
+
+.phase-panel.active {
+  display: grid;
+  align-content: center;
+  gap: 14px;
+}
+
+#phaseVoteResult.active {
+  align-content: start;
+}
+
+.phase-panel h3 {
+  font-size: clamp(34px, 5vw, 60px);
+  line-height: 1;
+  margin: 0;
+}
+
+.phase-panel p {
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+  margin: 0;
+  max-width: 760px;
+}
+
+#phaseVoteResult h3 {
+  font-size: clamp(28px, 3.5vw, 42px);
+}
+
+#phaseVoteResult p {
+  max-width: 640px;
+}
+
+#phaseVoteResult .primary-action {
+  justify-self: start;
+  margin-top: 8px;
+}
+
+.phase-mark.danger,
+.role-card.werewolf .role-card-kicker,
+.role-card.werewolf #roleCamp {
+  color: var(--red);
+}
+
+.phase-mark.good,
+.role-card.good .role-card-kicker,
+.role-card.good #roleCamp {
+  color: var(--blue);
+}
+
+.discussion-panel.active {
+  align-content: stretch;
+}
+
+.speech-feed {
+  display: grid;
+  gap: 12px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.vote-feed {
+  display: grid;
+  gap: 12px;
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.speech-bubble {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  line-height: 1.7;
+  padding: 13px 15px;
+}
+
+.speech-bubble strong {
+  color: var(--gold);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.thinking {
+  color: rgba(216, 180, 91, 0.88);
+  font-style: italic;
+}
+
+.human-speech {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+textarea,
+select {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 12px;
+}
+
+textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
+.vote-box {
+  display: flex;
+  gap: 10px;
+  max-width: 520px;
+}
+
+.vote-box select {
+  flex: 1;
+}
+
+.choice-box {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  max-width: 560px;
+}
+
+.choice-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.choice-card {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  min-height: 52px;
+  padding: 12px;
+  text-align: left;
+}
+
+.choice-card:hover {
+  border-color: var(--gold);
+}
+
+.status-line {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.event-log {
+  margin-top: 16px;
+  padding: 18px;
+}
+
+.event-log h3 {
+  margin: 0 0 12px;
+}
+
+#events {
+  display: grid;
+  gap: 8px;
+}
+
+.event {
+  color: rgba(245, 239, 231, 0.72);
+  line-height: 1.6;
+}
+
+.modal {
+  align-items: center;
+  background: rgba(0, 0, 0, 0.68);
+  display: grid;
+  inset: 0;
+  padding: 24px;
+  place-items: center;
+  position: fixed;
+  z-index: 20;
+}
+
+.role-card {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent),
+    var(--panel-strong);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  box-shadow: 0 30px 110px rgba(0, 0, 0, 0.72);
+  max-width: 520px;
+  padding: 34px;
+  text-align: center;
+  width: min(100%, 520px);
+}
+
+.seer-reveal-card {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent),
+    var(--panel-strong);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  box-shadow: 0 30px 110px rgba(0, 0, 0, 0.72);
+  max-width: 560px;
+  padding: 34px;
+  text-align: center;
+  width: min(100%, 560px);
+}
+
+.seer-reveal-card h2 {
+  color: var(--blue);
+  font-size: clamp(28px, 4vw, 46px);
+  line-height: 1.08;
+  margin: 0 0 18px;
+}
+
+.seer-reveal-card p {
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.6;
+  margin: 0 0 22px;
+}
+
+.role-card h2 {
+  font-size: clamp(44px, 9vw, 86px);
+  line-height: 1;
+  margin: 0 0 18px;
+}
+
+.role-card.werewolf h2 {
+  color: var(--red);
+}
+
+.role-card.good h2 {
+  color: var(--blue);
+}
+
+.role-details {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 18px;
+}
+
+.role-details span {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 8px 13px;
+}
+
+#roleHint {
+  color: var(--muted);
+  line-height: 1.7;
+  margin: 0 0 22px;
+}
+
+.role-teammates {
+  color: var(--text);
+  font-weight: 800;
+  line-height: 1.6;
+  margin: 0 0 14px;
+}
+
+.fog-transition {
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  position: fixed;
+  transition: opacity 900ms ease;
+  z-index: 30;
+}
+
+.fog-transition::before,
+.fog-transition::after {
+  animation: fogDrift 8s linear infinite;
+  background:
+    radial-gradient(circle at 18% 44%, rgba(255, 255, 255, 0.22), transparent 18%),
+    radial-gradient(circle at 42% 54%, rgba(255, 255, 255, 0.18), transparent 22%),
+    radial-gradient(circle at 68% 42%, rgba(255, 255, 255, 0.2), transparent 20%),
+    radial-gradient(circle at 86% 58%, rgba(255, 255, 255, 0.16), transparent 18%),
+    rgba(5, 7, 11, 0.78);
+  content: "";
+  filter: blur(18px);
+  inset: -18%;
+  position: absolute;
+  transform: translateX(-5%) scale(1.08);
+}
+
+.fog-transition::after {
+  animation-duration: 12s;
+  animation-direction: reverse;
+  opacity: 0.72;
+  transform: translateX(5%) scale(1.14);
+}
+
+.fog-transition.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@keyframes fogDrift {
+  0% {
+    transform: translate3d(-8%, 1%, 0) scale(1.08);
+  }
+  50% {
+    transform: translate3d(8%, -2%, 0) scale(1.18);
+  }
+  100% {
+    transform: translate3d(-8%, 1%, 0) scale(1.08);
+  }
+}
+
+@media (max-width: 980px) {
+  .players {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .game-screen {
+    padding: 18px;
+  }
+
+  .game-header,
+  .vote-box,
+  .role-details {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .players {
+    grid-template-columns: 1fr;
+  }
+
+  .phase-panel {
+    padding: 24px;
+  }
+}

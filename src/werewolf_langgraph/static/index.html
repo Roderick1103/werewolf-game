@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>狼人杀</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div id="fogTransition" class="fog-transition" aria-hidden="true"></div>
+
+    <main>
+      <section id="startScreen" class="start-screen">
+        <div class="moon"></div>
+        <div class="start-content">
+          <h1>狼人杀</h1>
+          <button id="startButton" class="primary-action" type="button">创建房间 / 开始游戏</button>
+          <p id="startStatus" class="start-status" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section id="gameScreen" class="game-screen hidden">
+        <header class="game-header">
+          <div>
+            <p id="phaseEyebrow" class="eyebrow">准备</p>
+            <h2 id="phaseTitle">等待夜幕降临</h2>
+          </div>
+          <div class="round-info">
+            <span id="roundInfo">第 1 天</span>
+            <span id="seatInfo">座位 -</span>
+          </div>
+        </header>
+
+        <section class="table-area">
+          <div id="players" class="players"></div>
+        </section>
+
+        <section class="phase-stage">
+          <article id="phaseSetup" class="phase-panel active">
+            <p class="phase-mark">序章</p>
+            <h3>房间已创建</h3>
+            <p>所有玩家已经入座。查看身份后，确认身份即可进入夜晚。</p>
+            <button id="confirmRoleButton" class="primary-action" type="button">查看身份</button>
+          </article>
+
+          <article id="phaseNight" class="phase-panel">
+            <p class="phase-mark">夜晚</p>
+            <h3>天黑请闭眼</h3>
+            <p>城镇陷入沉默，所有人都在等待黑暗中的选择。</p>
+            <button id="advanceButton" class="primary-action" type="button">进入狼人行动</button>
+          </article>
+
+          <article id="phaseWolf" class="phase-panel">
+            <p class="phase-mark danger">狼人行动</p>
+            <h3>黑夜中有脚步声</h3>
+            <p id="wolfStatus">狼人正在寻找目标。</p>
+            <div id="wolfAction" class="choice-box"></div>
+            <button id="wolfNextButton" class="primary-action hidden" type="button">完成狼人行动</button>
+          </article>
+
+          <article id="phaseSeer" class="phase-panel">
+            <p class="phase-mark good">预言家查验</p>
+            <h3>有人窥见真相</h3>
+            <p id="seerStatus">预言家将在夜色中查验一名玩家的阵营。</p>
+            <div id="seerAction" class="choice-box"></div>
+            <button id="seerNextButton" class="primary-action hidden" type="button">完成预言家行动</button>
+          </article>
+
+          <article id="phaseWitch" class="phase-panel">
+            <p class="phase-mark good">女巫用药</p>
+            <h3>药瓶在月光下闪烁</h3>
+            <p id="witchStatus">女巫可以选择拯救或毒杀。</p>
+            <div id="witchAction" class="choice-box"></div>
+            <button id="witchNextButton" class="primary-action hidden" type="button">完成女巫行动</button>
+          </article>
+
+          <article id="phaseDawn" class="phase-panel">
+            <p class="phase-mark">天亮了</p>
+            <h3>清晨的钟声响起</h3>
+            <p id="dawnSummary">昨夜的信息正在公布。</p>
+            <button id="dawnNextButton" class="primary-action" type="button">进入白天讨论</button>
+          </article>
+
+          <article id="phaseNightResult" class="phase-panel">
+            <p class="phase-mark">夜晚结果</p>
+            <h3>本夜结局</h3>
+            <p id="nightResultSummary">本夜结果已经公布。</p>
+            <button id="nightResultNextButton" class="primary-action" type="button">查看最终胜负</button>
+          </article>
+
+          <article id="phaseDiscussion" class="phase-panel discussion-panel">
+            <p class="phase-mark">白天讨论</p>
+            <h3>轮流发言</h3>
+            <div id="speechFeed" class="speech-feed"></div>
+            <div class="human-speech">
+              <textarea id="speechInput" placeholder="轮到你时，在这里留下你的发言"></textarea>
+              <button id="speechButton" class="primary-action" type="button">我发言完毕</button>
+              <button id="discussionNextButton" class="primary-action" type="button">进入投票</button>
+            </div>
+          </article>
+
+          <article id="phaseVote" class="phase-panel">
+            <p class="phase-mark">投票环节</p>
+            <h3>选择你怀疑的人</h3>
+            <p>投票会影响白天放逐结果，请谨慎选择。</p>
+            <div id="voteFeed" class="speech-feed vote-feed"></div>
+            <div class="vote-box">
+              <select id="voteTarget"></select>
+              <button id="voteButton" class="primary-action" type="button">提交投票</button>
+            </div>
+          </article>
+
+          <article id="phaseVoteResult" class="phase-panel">
+            <p class="phase-mark">投票结果</p>
+            <h3>谁被投出去了</h3>
+            <p id="voteResultSummary">本轮投票已经结束。</p>
+            <button id="voteResultNextButton" class="primary-action" type="button">继续下一轮</button>
+          </article>
+
+          <article id="phaseResult" class="phase-panel">
+            <p class="phase-mark">胜负判定</p>
+            <h3 id="winnerTitle">游戏结束</h3>
+            <p id="winnerText">胜负已揭晓。</p>
+          </article>
+        </section>
+
+        <section class="event-log">
+          <h3>公开记录</h3>
+          <div id="events"></div>
+        </section>
+      </section>
+    </main>
+
+    <div id="roleModal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="role-card">
+        <p class="role-card-kicker">身份确认</p>
+        <h2 id="roleName">身份</h2>
+        <div class="role-details">
+          <span id="roleSeat">座位 -</span>
+          <span id="roleCamp">阵营</span>
+        </div>
+        <p id="roleTeammates" class="role-teammates hidden"></p>
+        <p id="roleHint">请记住你的身份，并按座位号参与发言。</p>
+        <button id="closeRoleModalButton" class="primary-action" type="button">我已确认</button>
+      </div>
+    </div>
+
+    <div id="seerRevealModal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="seer-reveal-card">
+        <p class="role-card-kicker">预言家查验</p>
+        <h2 id="seerRevealTitle">查验结果</h2>
+        <p id="seerRevealText">查验结果：-</p>
+        <button id="seerAckButton" class="primary-action" type="button">我已知晓</button>
+      </div>
+    </div>
+
+    <script src="/static/app.js?v=20260524-final-result-step"></script>
+  </body>
+</html>

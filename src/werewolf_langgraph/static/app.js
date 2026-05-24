@@ -1,0 +1,872 @@
+let room = null;
+let currentStage = "setup";
+let renderedSpeechKeys = new Set();
+let discussionPlaybackRunning = false;
+let votePlaybackRunning = false;
+let autoAdvanceTimer = null;
+let discussionAdvanceTimer = null;
+let voteAdvanceTimer = null;
+let roleRevealed = false;
+let pendingChoice = null;
+let pendingSeerReveal = null;
+let witchActionFlow = null;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const roleNames = {
+  werewolf: "狼人",
+  seer: "预言家",
+  witch: "女巫",
+  villager: "平民",
+  hidden: "身份未知",
+};
+
+const campNames = {
+  werewolf: "狼人阵营",
+  seer: "好人阵营",
+  witch: "好人阵营",
+  villager: "好人阵营",
+};
+
+const stageCopy = {
+  setup: ["准备", "等待夜幕降临", "phaseSetup"],
+  night_start: ["夜晚", "天黑请闭眼", "phaseNight"],
+  wolf_action: ["狼人行动", "狼人正在选择今晚的目标", "phaseWolf"],
+  seer_action: ["预言家查验", "预言家正在查看一名玩家的身份", "phaseSeer"],
+  witch_action: ["女巫用药", "女巫正在决定是否使用药剂", "phaseWitch"],
+  dawn: ["天亮了", "清晨的钟声响起", "phaseDawn"],
+  night_result: ["夜晚结果", "查看本夜结局", "phaseNightResult"],
+  day_discussion: ["白天讨论", "轮流发言", "phaseDiscussion"],
+  day_discussion_done: ["白天讨论", "轮流发言", "phaseDiscussion"],
+  day_vote: ["投票环节", "选择你怀疑的人", "phaseVote"],
+  day_vote_result: ["放逐结果", "查看投票结局", "phaseVoteResult"],
+  game_over: ["胜负判定", "游戏结束", "phaseResult"],
+};
+
+async function startGame() {
+  if (room) return;
+  roleRevealed = false;
+  pendingSeerReveal = null;
+  witchActionFlow = null;
+  discussionPlaybackRunning = false;
+  votePlaybackRunning = false;
+  clearTimeout(discussionAdvanceTimer);
+  discussionAdvanceTimer = null;
+  clearTimeout(voteAdvanceTimer);
+  voteAdvanceTimer = null;
+  setStartButtonState("starting");
+  try {
+    const response = await fetch("/api/rooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ human_name: "打摆子的家伙", human_seat: pickHumanSeat() }),
+    });
+    const nextRoom = await response.json();
+    if (!response.ok) throw new Error(nextRoom.detail || "create room failed");
+
+    room = nextRoom;
+    currentStage = room.stage;
+    renderedSpeechKeys = new Set();
+
+    await withFog(async () => {
+      document.querySelector("#startScreen").classList.add("hidden");
+      document.querySelector("#gameScreen").classList.remove("hidden");
+      renderRoom();
+    });
+  } catch (error) {
+    showStartError("创建房间失败，请检查服务或 DeepSeek 配置后重试。");
+    setStartButtonState("idle");
+  }
+}
+
+async function nextStage() {
+  const canAdvanceWinnerResult = room && room.winner && (currentStage === "night_result" || currentStage === "day_vote_result");
+  if (!room || room.waiting_for || (room.winner && !canAdvanceWinnerResult)) return;
+  setBusy(true);
+  try {
+    const response = await fetch(`/api/rooms/${room.room_id}/next_stage`, { method: "POST" });
+    const nextRoom = await response.json();
+    if (!response.ok) throw new Error(nextRoom.detail || "next_stage failed");
+    await applyRoom(nextRoom);
+  } catch (error) {
+    showLocalEvent("阶段推进失败，请稍后重试。");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function submitAction(payload) {
+  if (!room || !room.waiting_for) return;
+  setBusy(true);
+  try {
+    const response = await fetch(`/api/rooms/${room.room_id}/submit_action`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const nextRoom = await response.json();
+    if (!response.ok) throw new Error(nextRoom.detail || "submit failed");
+    await applyRoom(nextRoom, payload.kind);
+  } catch (error) {
+    showLocalEvent("提交失败，请重新选择。");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function applyRoom(nextRoom, actionKind = null) {
+  const previousStage = currentStage;
+  room = nextRoom;
+  currentStage = room.stage;
+  const shouldShowSeerReveal = actionKind === "seer_check" && room.seer_checks && room.human_role === "seer";
+  if (shouldShowSeerReveal) {
+    pendingSeerReveal = buildSeerReveal();
+  }
+  if (previousStage !== currentStage) {
+    pendingChoice = null;
+    if (!shouldShowSeerReveal) {
+      pendingSeerReveal = null;
+    }
+    witchActionFlow = null;
+    clearTimeout(discussionAdvanceTimer);
+    discussionAdvanceTimer = null;
+    clearTimeout(voteAdvanceTimer);
+    voteAdvanceTimer = null;
+    discussionPlaybackRunning = false;
+    votePlaybackRunning = false;
+    if (currentStage === "day_discussion") {
+      resetDiscussionFeed();
+    } else if (currentStage === "day_vote") {
+      resetVoteFeed();
+    }
+    await transitionToStage(currentStage, renderRoom);
+  } else {
+    renderRoom();
+  }
+
+  if (shouldShowSeerReveal) {
+    renderRoom();
+    return;
+  }
+
+  if (currentStage === "day_discussion") {
+    scheduleDiscussionAutoAdvance();
+    return;
+  }
+
+  if (currentStage === "day_vote") {
+    scheduleVoteAutoAdvance();
+    return;
+  }
+
+  scheduleNightAutoAdvance();
+}
+
+async function transitionToStage(stage, renderFn) {
+  await showFog();
+  currentStage = stage;
+  renderFn();
+  await hideFog();
+}
+
+async function withFog(work) {
+  await showFog();
+  await work();
+  await hideFog();
+}
+
+async function showFog() {
+  document.querySelector("#fogTransition").classList.add("active");
+  await sleep(800);
+}
+
+async function hideFog() {
+  document.querySelector("#fogTransition").classList.remove("active");
+  await sleep(800);
+}
+
+function showRoleModal() {
+  roleRevealed = true;
+  renderRoom();
+  const human = getHumanPlayer();
+  const role = room.human_role;
+  const wolfTeammates = room.wolf_teammates || [];
+  const card = document.querySelector(".role-card");
+  card.classList.remove("werewolf", "good");
+  card.classList.add(role === "werewolf" ? "werewolf" : "good");
+  document.querySelector("#roleName").textContent = roleNames[role] || role;
+  document.querySelector("#roleSeat").textContent = `座位 ${human.id}`;
+  document.querySelector("#roleCamp").textContent = campNames[role] || "未知阵营";
+  const teammatesNode = document.querySelector("#roleTeammates");
+  if (teammatesNode) {
+    const teammateNames = wolfTeammates.map((player) => player.name).filter(Boolean);
+    teammatesNode.textContent = role === "werewolf"
+      ? `你的狼队友：${teammateNames.length ? teammateNames.join("、") : "无"}`
+      : "";
+    teammatesNode.classList.toggle("hidden", role !== "werewolf");
+  }
+  document.querySelector("#roleModal").classList.remove("hidden");
+}
+
+async function closeRoleModal() {
+  document.querySelector("#roleModal").classList.add("hidden");
+  if (room && room.stage === "setup" && !room.waiting_for) {
+    await nextStage();
+  }
+}
+
+function renderRoom() {
+  if (!room) return;
+  const displayStage = pendingSeerReveal ? "seer_action" : currentStage;
+  const activePlayerId = getActivePlayerId(displayStage);
+  renderHeader(displayStage);
+  renderPlayers(activePlayerId);
+  renderPanels(displayStage);
+  renderEvents();
+  renderVoteTargets();
+  renderWaitingAction(displayStage);
+  if (currentStage === "day_discussion" || currentStage === "day_discussion_done") {
+    renderDiscussionFeedProgress();
+  } else if (currentStage === "day_vote") {
+    renderVoteFeedProgress();
+  } else {
+    renderSpeechFeedInstant();
+  }
+}
+
+function renderHeader(displayStage = currentStage) {
+  const [eyebrow, title] = stageCopy[displayStage] || stageCopy.setup;
+  document.querySelector("#phaseEyebrow").textContent = eyebrow;
+  document.querySelector("#phaseTitle").textContent = title;
+  document.querySelector("#roundInfo").textContent = `第 ${room.day} 天 / 第 ${room.night} 夜`;
+  document.querySelector("#seatInfo").textContent = `座位 ${room.human_id}`;
+}
+
+function renderPanels(displayStage = currentStage) {
+  const panelId = (stageCopy[displayStage] || stageCopy.setup)[2];
+  document.querySelectorAll(".phase-panel").forEach((panel) => {
+    panel.classList.toggle("active", panel.id === panelId);
+  });
+
+  const waitingKind = room?.waiting_for?.kind || null;
+  const canAdvanceWinnerResult = room?.winner && (displayStage === "night_result" || displayStage === "day_vote_result");
+  const canContinue = Boolean(room && !room.waiting_for && (!room.winner || canAdvanceWinnerResult));
+  const showVoteControls = waitingKind === "vote";
+
+  setVisible("#advanceButton", false);
+  setVisible("#dawnNextButton", displayStage === "dawn");
+  setVisible("#nightResultNextButton", displayStage === "night_result");
+  setVisible("#discussionNextButton", displayStage === "day_discussion_done");
+  setVisible("#voteResultNextButton", displayStage === "day_vote_result");
+  setVisible("#speechInput", waitingKind === "speech");
+  setVisible("#speechButton", waitingKind === "speech");
+  setVisible("#voteTarget", showVoteControls);
+  setVisible("#voteButton", showVoteControls);
+
+  document.querySelector("#advanceButton").disabled = !canContinue;
+  document.querySelector("#dawnNextButton").disabled = !canContinue;
+  const nightResultNextButton = document.querySelector("#nightResultNextButton");
+  if (nightResultNextButton) nightResultNextButton.disabled = !canContinue;
+  document.querySelector("#discussionNextButton").disabled = !canContinue || discussionPlaybackRunning;
+  const voteResultNextButton = document.querySelector("#voteResultNextButton");
+  if (voteResultNextButton) voteResultNextButton.disabled = !canContinue;
+  document.querySelector("#speechButton").disabled = waitingKind !== "speech";
+  document.querySelector("#voteButton").disabled = !showVoteControls;
+
+  document.querySelector("#wolfStatus").textContent = nightNarration("wolf_action");
+  document.querySelector("#seerStatus").textContent = nightNarration("seer_action");
+  document.querySelector("#witchStatus").textContent = nightNarration("witch_action");
+
+  const latestNight = [...room.events].reverse().find((event) => event.phase === "night");
+  document.querySelector("#dawnSummary").textContent = latestNight?.content || "昨夜的信息正在公布。";
+  const nightResultSummary = document.querySelector("#nightResultSummary");
+  if (nightResultSummary) {
+    nightResultSummary.textContent = latestNight?.content || "本夜结果已经公布。";
+  }
+  const voteResultSummary = document.querySelector("#voteResultSummary");
+  if (voteResultSummary) {
+    const latestVoteResult = [...room.events].reverse().find((event) => event.phase === "day_vote" && /被放逐出局|was voted out/i.test(event.content || ""));
+    voteResultSummary.textContent = latestVoteResult?.content || "本轮投票已经结束。";
+    const voteResultNextButton = document.querySelector("#voteResultNextButton");
+    if (voteResultNextButton) voteResultNextButton.textContent = room.winner ? "查看最终胜负" : "继续下一轮";
+  }
+
+  if (room.winner) {
+    document.querySelector("#winnerTitle").textContent = room.winner === "werewolf" ? "狼人阵营获胜" : "好人阵营获胜";
+    document.querySelector("#winnerText").textContent = "所有身份已经公开，游戏结束。";
+  }
+}
+
+function renderWaitingAction() {
+  clearActionBoxes();
+  if (pendingSeerReveal) {
+    renderSeerReveal();
+    return;
+  }
+  if (!room.waiting_for) return;
+  const wait = room.waiting_for;
+  if (wait.kind === "speech") {
+    renderPlayers(wait.speaker_id || room.human_id);
+    showLocalEvent(`轮到 ${wait.speaker_name || "你"} 发言。发言完毕后点击“我发言完毕”。`);
+  } else if (wait.kind === "vote") {
+    renderPlayers(wait.voter_id || room.human_id);
+    showLocalEvent(`轮到 ${wait.voter_name || "你"} 投票。请选择一位玩家后提交投票。`);
+    const target = document.querySelector("#voteTarget");
+    if (target) target.focus();
+  }
+  if (pendingChoice && pendingChoice.kind !== "witch_action") {
+    renderChoiceConfirmation(wait);
+    return;
+  }
+  if (wait.kind === "wolf_kill") renderTargetChoices("#wolfAction", "wolf_kill", wait.candidates, "wolfAction");
+  if (wait.kind === "seer_check") renderTargetChoices("#seerAction", "seer_check", wait.candidates, "seerAction");
+  if (wait.kind === "witch_action") renderWitchChoices(wait);
+}
+
+function clearActionBoxes() {
+  ["#wolfAction", "#seerAction", "#witchAction"].forEach((selector) => {
+    document.querySelector(selector).innerHTML = "";
+  });
+}
+
+function renderTargetChoices(selector, kind, candidates, roleName) {
+  const box = document.querySelector(selector);
+  box.innerHTML = `<p class="status-line">${roleChoiceText(roleName)}</p><div class="choice-grid"></div>`;
+  const grid = box.querySelector(".choice-grid");
+  for (const candidate of candidates || []) {
+    const button = document.createElement("button");
+    button.className = "choice-card";
+    button.textContent = `${candidate.id}. ${candidate.name}`;
+    button.addEventListener("click", () => chooseWithConfirm(kind, candidate));
+    grid.appendChild(button);
+  }
+}
+
+function renderWitchChoices(wait) {
+  const flow = ensureWitchActionFlow(wait);
+  if (!flow) return;
+
+  const box = document.querySelector("#witchAction");
+  box.innerHTML = `<p class="status-line">${flow.step === "save" ? "解药阶段" : "毒药阶段"}</p><div class="choice-grid"></div>`;
+  const grid = box.querySelector(".choice-grid");
+  document.querySelector("#witchStatus").textContent = flow.step === "save" ? buildWitchSavePrompt(flow) : buildWitchPoisonPrompt(flow);
+
+  if (flow.step === "save") {
+    const victim = flow.saveCandidates[0];
+
+    const saveButton = document.createElement("button");
+    saveButton.className = "choice-card";
+    saveButton.type = "button";
+    saveButton.textContent = victim ? `救下 ${victim.id}. ${victim.name}` : "使用解药";
+    saveButton.addEventListener("click", () => {
+      const nextFlow = {
+        ...flow,
+        saveTargetId: victim ? victim.id : null,
+      };
+      witchActionFlow = {
+        ...nextFlow,
+        step: flow.canPoison ? "poison" : "save",
+      };
+      if (flow.canPoison) {
+        renderRoom();
+      } else {
+        submitWitchAction(nextFlow, null);
+      }
+    });
+    grid.appendChild(saveButton);
+
+    const skipButton = document.createElement("button");
+    skipButton.className = "choice-card";
+    skipButton.type = "button";
+    skipButton.textContent = "不救，继续下一步";
+    skipButton.addEventListener("click", () => {
+      const nextFlow = {
+        ...flow,
+        saveTargetId: null,
+      };
+      witchActionFlow = {
+        ...nextFlow,
+        step: flow.canPoison ? "poison" : "save",
+      };
+      if (flow.canPoison) {
+        renderRoom();
+      } else {
+        submitWitchAction(nextFlow, null);
+      }
+    });
+    grid.appendChild(skipButton);
+    return;
+  }
+
+  const skipPoison = document.createElement("button");
+  skipPoison.className = "choice-card";
+  skipPoison.type = "button";
+  skipPoison.textContent = "不下毒";
+  skipPoison.addEventListener("click", () => submitWitchAction(flow, null));
+  grid.appendChild(skipPoison);
+
+  for (const candidate of flow.poisonCandidates) {
+    const button = document.createElement("button");
+    button.className = "choice-card";
+    button.type = "button";
+    button.textContent = `毒死 ${candidate.id}. ${candidate.name}`;
+    button.addEventListener("click", () => submitWitchAction(flow, candidate.id));
+    grid.appendChild(button);
+  }
+}
+
+function ensureWitchActionFlow(wait) {
+  const saveCandidates = wait.save_candidates || [];
+  const poisonCandidates = wait.poison_candidates || [];
+  const canSave = Boolean(wait.can_save && saveCandidates.length);
+  const canPoison = Boolean(wait.can_poison && poisonCandidates.length);
+  const initialStep = canSave ? "save" : "poison";
+
+  if (!witchActionFlow || witchActionFlow.night !== room.night || witchActionFlow.waitKind !== wait.kind) {
+    witchActionFlow = {
+      night: room.night,
+      waitKind: wait.kind,
+      step: initialStep,
+      saveTargetId: null,
+      poisonTargetId: null,
+      canSave,
+      canPoison,
+      saveCandidates,
+      poisonCandidates,
+    };
+    return witchActionFlow;
+  }
+
+  witchActionFlow = {
+    ...witchActionFlow,
+    canSave,
+    canPoison,
+    saveCandidates,
+    poisonCandidates,
+  };
+
+  if (witchActionFlow.step === "save" && !canSave) {
+    witchActionFlow.step = "poison";
+  }
+
+  return witchActionFlow;
+}
+
+function buildWitchSavePrompt(flow) {
+  const victim = flow.saveCandidates[0];
+  if (!victim) return "今晚有玩家被狼人袭击，请决定是否使用解药。";
+  return `今晚狼人击中了 ${victim.id}. ${victim.name}，请选择是否使用解药。`;
+}
+
+function buildWitchPoisonPrompt(flow) {
+  if (!flow.canPoison) return "你已经完成解药选择，今晚无法再使用毒药。";
+  return flow.saveTargetId ? "解药选择已确定，请选择毒药目标。" : "你选择不救人，请选择是否使用毒药。";
+}
+
+function submitWitchAction(flow, poisonTargetId) {
+  const payload = { kind: "witch_action" };
+  if (flow.saveTargetId !== null && flow.saveTargetId !== undefined) payload.save_target_id = flow.saveTargetId;
+  if (poisonTargetId !== null && poisonTargetId !== undefined) payload.poison_target_id = poisonTargetId;
+  submitAction(payload);
+}
+
+function chooseWithConfirm(kind, candidate, options = {}) {
+  pendingChoice = { kind, candidate, options };
+  renderWaitingAction();
+}
+
+function renderChoiceConfirmation(wait) {
+  const { kind, candidate, options } = pendingChoice;
+  const boxSelector = kind === "wolf_kill" ? "#wolfAction" : "#seerAction";
+  const box = document.querySelector(boxSelector);
+  const label = candidate ? `${candidate.id}. ${candidate.name}` : "未选择目标";
+  const prompt = kind === "wolf_kill" ? `确认今晚袭击 ${label} 吗？` : `确认查验 ${label} 吗？`;
+
+  box.innerHTML = `
+    <p class="status-line">${prompt}</p>
+    <div class="choice-grid">
+      <button id="confirmChoiceButton" class="choice-card" type="button">确认</button>
+      <button id="cancelChoiceButton" class="choice-card" type="button">取消</button>
+    </div>
+  `;
+
+  document.querySelector("#confirmChoiceButton").addEventListener("click", () => {
+    const activeChoice = pendingChoice;
+    pendingChoice = null;
+    if (!activeChoice) return;
+
+    const activeCandidate = activeChoice.candidate;
+    if (activeChoice.kind === "wolf_kill" || activeChoice.kind === "seer_check") {
+      submitAction({ kind: activeChoice.kind, target_id: activeCandidate.id });
+    }
+  });
+
+  document.querySelector("#cancelChoiceButton").addEventListener("click", () => {
+    pendingChoice = null;
+    renderWaitingAction();
+  });
+}
+
+function buildSeerReveal() {
+  const myCheck = [...(room.seer_checks || [])].reverse().find((check) => check.seer_id === room.human_id);
+  if (!myCheck) return null;
+  const target = room.players.find((player) => player.id === myCheck.target_id);
+  if (!target) return null;
+  return {
+    target,
+    verdict: myCheck.result_camp === "werewolf" ? "狼人阵营" : "好人阵营",
+  };
+}
+
+function renderSeerReveal() {
+  const reveal = pendingSeerReveal || buildSeerReveal();
+  if (!reveal) return;
+  const { target, verdict } = reveal;
+  const modal = document.querySelector("#seerRevealModal");
+  const title = document.querySelector("#seerRevealTitle");
+  const text = document.querySelector("#seerRevealText");
+  const ackButton = document.querySelector("#seerAckButton");
+  if (!modal || !title || !text) return;
+  title.textContent = `${target.id}. ${target.name}`;
+  text.textContent = `查验结果：${target.name} 是 ${verdict}。`;
+  modal.classList.remove("hidden");
+  if (!ackButton) return;
+  ackButton.onclick = async () => {
+    pendingSeerReveal = null;
+    modal.classList.add("hidden");
+    renderRoom();
+    scheduleNightAutoAdvance();
+  };
+}
+
+function renderPlayers(activeSpeakerId = null) {
+  const container = document.querySelector("#players");
+  container.innerHTML = "";
+  for (const player of room.players) {
+    const card = document.createElement("article");
+    card.className = "player";
+    if (!player.is_alive) card.classList.add("dead");
+    if (player.id === activeSpeakerId) card.classList.add("active-speaker");
+    const roleLabel = player.is_human && !roleRevealed ? "身份待查看" : roleNames[player.role] || player.role;
+    card.innerHTML = `
+      <strong>${player.id}. ${player.name}${player.is_human ? "（你）" : ""}</strong>
+      <span>${roleLabel}</span>
+      <span>${player.is_alive ? "存活" : "出局"}</span>
+    `;
+    container.appendChild(card);
+  }
+}
+
+function renderVoteTargets() {
+  const select = document.querySelector("#voteTarget");
+  select.innerHTML = "";
+  for (const player of room.players) {
+    if (!player.is_alive || player.id === room.human_id) continue;
+    const option = document.createElement("option");
+    option.value = player.id;
+    option.textContent = `${player.id}. ${player.name}`;
+    select.appendChild(option);
+  }
+}
+
+function renderEvents() {
+  const container = document.querySelector("#events");
+  container.innerHTML = "";
+  for (const event of room.events.slice().reverse()) {
+    const item = document.createElement("div");
+    item.className = "event";
+    item.textContent = `[第 ${event.day} 天 | ${phaseLabel(event.phase)}] ${event.content}`;
+    container.appendChild(item);
+  }
+}
+
+function showLocalEvent(text) {
+  const container = document.querySelector("#events");
+  const item = document.createElement("div");
+  item.className = "event";
+  item.textContent = text;
+  container.prepend(item);
+}
+
+function showSeerResult() {
+  pendingSeerReveal = buildSeerReveal();
+  renderRoom();
+}
+
+async function submitSpeech() {
+  const input = document.querySelector("#speechInput");
+  const content = input.value.trim();
+  input.value = "";
+  await submitAction({ kind: "speech", content });
+}
+
+async function submitVote() {
+  const targetId = document.querySelector("#voteTarget").value;
+  if (!targetId) return;
+  await submitAction({ kind: "vote", target_id: targetId });
+}
+
+function resetDiscussionFeed() {
+  renderedSpeechKeys = new Set();
+  const feed = document.querySelector("#speechFeed");
+  if (feed) feed.innerHTML = "";
+}
+
+function resetVoteFeed() {
+  renderedSpeechKeys = new Set();
+  const feed = document.querySelector("#voteFeed");
+  if (feed) feed.innerHTML = "";
+}
+
+function getActivePlayerId(displayStage = currentStage) {
+  if (displayStage === "day_discussion" || displayStage === "day_discussion_done") {
+    if (room?.waiting_for?.kind === "speech") {
+      return room.waiting_for.speaker_id || room.human_id;
+    }
+    const speeches = orderedSpeeches(room.speeches || []).filter((speech) => speech.day === room.day && speech.phase === "day_discussion");
+    return speeches.length ? speeches[speeches.length - 1].speaker_id : null;
+  }
+
+  if (displayStage === "day_vote") {
+    if (room?.waiting_for?.kind === "vote") {
+      return room.waiting_for.voter_id || room.human_id;
+    }
+    const votes = orderedVotes(room.votes || []).filter((vote) => vote.day === room.day);
+    const votedIds = new Set(votes.map((vote) => vote.voter_id));
+    const living = room.players.filter((player) => player.is_alive).sort((a, b) => Number(a.id) - Number(b.id));
+    const next = living.find((player) => !votedIds.has(player.id));
+    return next ? next.id : null;
+  }
+
+  return null;
+}
+
+function scheduleDiscussionAutoAdvance() {
+  clearTimeout(discussionAdvanceTimer);
+  clearTimeout(voteAdvanceTimer);
+  if (!room || room.winner || pendingSeerReveal || currentStage !== "day_discussion" || room.waiting_for) {
+    discussionPlaybackRunning = false;
+    return;
+  }
+  const speeches = orderedSpeeches(room.speeches || []).filter((speech) => speech.day === room.day && speech.phase === "day_discussion");
+  const latestSpeech = speeches[speeches.length - 1] || null;
+  if (!latestSpeech) {
+    renderFirstDiscussionWaitPrompt();
+  }
+  const delay = latestSpeech ? discussionDelayFromText(latestSpeech.content) : 700;
+  discussionPlaybackRunning = true;
+  discussionAdvanceTimer = setTimeout(() => {
+    if (!room || room.winner || pendingSeerReveal || currentStage !== room.stage || currentStage !== "day_discussion" || room.waiting_for) return;
+    nextStage();
+  }, delay);
+}
+
+function renderFirstDiscussionWaitPrompt() {
+  const feed = document.querySelector("#speechFeed");
+  if (!feed || feed.children.length) return;
+  feed.innerHTML = '<div class="speech-bubble wait-bubble">请认真思考自己接下来的发言</div>';
+}
+
+function scheduleVoteAutoAdvance() {
+  clearTimeout(voteAdvanceTimer);
+  clearTimeout(discussionAdvanceTimer);
+  if (!room || room.winner || pendingSeerReveal || currentStage !== "day_vote" || room.waiting_for) {
+    votePlaybackRunning = false;
+    return;
+  }
+  const votes = orderedVotes(room.votes || []).filter((vote) => vote.day === room.day);
+  const delay = votes.length ? 450 : 250;
+  votePlaybackRunning = true;
+  voteAdvanceTimer = setTimeout(() => {
+    if (!room || room.winner || pendingSeerReveal || currentStage !== room.stage || currentStage !== "day_vote" || room.waiting_for) return;
+    nextStage();
+  }, delay);
+}
+
+function discussionDelayFromText(text) {
+  const length = String(text || "").trim().length;
+  return Math.max(1400, Math.min(5200, 900 + length * 40));
+}
+
+function renderDiscussionFeedProgress() {
+  const feed = document.querySelector("#speechFeed");
+  if (!feed) return;
+  const speeches = orderedSpeeches(room.speeches || []).filter((speech) => speech.day === room.day && speech.phase === "day_discussion");
+  for (const speech of speeches) {
+    const key = speechKey(speech);
+    if (renderedSpeechKeys.has(key)) continue;
+    const player = getPlayer(speech.speaker_id);
+    if (!player) continue;
+    appendSpeechBubble(speech, player);
+    renderedSpeechKeys.add(key);
+  }
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function renderSpeechFeedInstant() {
+  const feed = document.querySelector("#speechFeed");
+  feed.innerHTML = "";
+  renderedSpeechKeys = new Set();
+  for (const speech of orderedSpeeches(room.speeches || [])) {
+    const player = getPlayer(speech.speaker_id);
+    if (!player) continue;
+    appendSpeechBubble(speech, player);
+    renderedSpeechKeys.add(speechKey(speech));
+  }
+}
+
+function renderVoteFeedProgress() {
+  const feed = document.querySelector("#voteFeed");
+  if (!feed) return;
+  const votes = orderedVotes(room.votes || []).filter((vote) => vote.day === room.day);
+  for (const vote of votes) {
+    const key = voteKey(vote);
+    if (renderedSpeechKeys.has(key)) continue;
+    const voter = getPlayer(vote.voter_id);
+    const target = getPlayer(vote.target_id);
+    if (!voter || !target) continue;
+    appendVoteBubble(vote, voter, target);
+    renderedSpeechKeys.add(key);
+  }
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function orderedSpeeches(speeches) {
+  return [...speeches].sort((a, b) => (a.day === b.day ? Number(a.speaker_id) - Number(b.speaker_id) : a.day - b.day));
+}
+
+function orderedVotes(votes) {
+  return [...votes].sort((a, b) => (a.day === b.day ? Number(a.voter_id) - Number(b.voter_id) : a.day - b.day));
+}
+
+function appendSpeechBubble(speech, player) {
+  const bubble = document.createElement("div");
+  bubble.className = "speech-bubble";
+  bubble.innerHTML = `<strong>${player.id}. ${player.name}</strong>${speech.content}`;
+  document.querySelector("#speechFeed").appendChild(bubble);
+}
+
+function appendVoteBubble(vote, voter, target) {
+  const bubble = document.createElement("div");
+  bubble.className = "speech-bubble vote-bubble";
+  bubble.innerHTML = `<strong>${voter.id}. ${voter.name}</strong>投给了 ${target.id}. ${target.name}`;
+  document.querySelector("#voteFeed").appendChild(bubble);
+}
+
+function speechKey(speech) {
+  return `${speech.day}:${speech.speaker_id}:${speech.content}`;
+}
+
+function voteKey(vote) {
+  return `${vote.day}:${vote.voter_id}:${vote.target_id}`;
+}
+
+function getHumanPlayer() {
+  return room.players.find((player) => player.id === room.human_id);
+}
+
+function getPlayer(playerId) {
+  return room.players.find((player) => player.id === playerId);
+}
+
+function phaseLabel(phase) {
+  return { setup: "准备", night: "夜晚", day_discussion: "白天讨论", day_vote: "投票", game_over: "结束" }[phase] || phase;
+}
+
+function roleChoiceText(selectorName) {
+  if (currentStage === "wolf_action" && selectorName === "wolfAction") {
+    return room.human_role === "werewolf" ? "请选择今晚要袭击的目标。" : "狼人正在选择今晚的目标。";
+  }
+  if (currentStage === "seer_action" && selectorName === "seerAction") {
+    return room.human_role === "seer" ? "请选择要查验的玩家，查验后会立即显示身份。" : "预言家正在查验一名玩家的身份。";
+  }
+  if (currentStage === "witch_action" && selectorName === "witchAction") {
+    return room.human_role === "witch"
+      ? "请选择是否救人或毒人，点击后会确认。"
+      : "女巫正在决定是否使用药剂。";
+  }
+  return "请稍候。";
+}
+
+function nightNarration(stage) {
+  if (currentStage !== stage) {
+    if (stage === "wolf_action") return "狼人正在选择今晚的目标。";
+    if (stage === "seer_action") return "预言家正在查验一名玩家的身份。";
+    if (stage === "witch_action") return "女巫正在决定是否使用药剂。";
+    return "";
+  }
+  if (stage === "wolf_action" && room.human_role !== "werewolf") return "狼人正在选择今晚的目标。";
+  if (stage === "seer_action" && room.human_role !== "seer") return "预言家正在查验一名玩家的身份。";
+  if (stage === "witch_action" && room.human_role !== "witch") return "女巫正在决定是否使用药剂。";
+  return roleChoiceText(stage === "wolf_action" ? "wolfAction" : stage === "seer_action" ? "seerAction" : "witchAction");
+}
+
+function scheduleNightAutoAdvance() {
+  clearTimeout(autoAdvanceTimer);
+  clearTimeout(discussionAdvanceTimer);
+  clearTimeout(voteAdvanceTimer);
+  const autoStages = ["night_start", "wolf_action", "seer_action", "witch_action"];
+  if (!room || room.waiting_for || room.winner || pendingSeerReveal || !autoStages.includes(currentStage)) return;
+  autoAdvanceTimer = setTimeout(() => {
+    if (!room || room.waiting_for || room.winner || pendingSeerReveal || currentStage !== room.stage) return;
+    nextStage();
+  }, 1600);
+}
+
+function setVisible(selector, visible) {
+  const node = document.querySelector(selector);
+  if (!node) return;
+  node.classList.toggle("hidden", !visible);
+}
+
+function setBusy(isBusy) {
+  if (isBusy) {
+    document.querySelectorAll("button, textarea, select").forEach((element) => {
+      if (element.id !== "startButton") element.disabled = true;
+    });
+    return;
+  }
+  document.querySelectorAll("button, textarea, select").forEach((element) => {
+    if (element.id !== "startButton") element.disabled = false;
+  });
+  if (room) {
+    renderPanels();
+    renderWaitingAction();
+  }
+}
+
+function setStartButtonState(state) {
+  const button = document.querySelector("#startButton");
+  if (!button) return;
+  const isStarting = state === "starting";
+  button.disabled = isStarting;
+  button.setAttribute("aria-busy", String(isStarting));
+  button.textContent = isStarting ? "正在创建房间..." : "创建房间 / 开始游戏";
+  showStartStatus(isStarting ? "正在创建房间，请稍候..." : "");
+}
+
+function pickHumanSeat() {
+  return Math.floor(Math.random() * 9) + 1;
+}
+
+function showStartError(message) {
+  showStartStatus(message);
+}
+
+function showStartStatus(message) {
+  const status = document.querySelector("#startStatus");
+  if (status) {
+    status.textContent = message;
+  }
+}
+
+document.querySelector("#startButton").addEventListener("click", startGame);
+document.querySelector("#confirmRoleButton").addEventListener("click", showRoleModal);
+document.querySelector("#closeRoleModalButton").addEventListener("click", closeRoleModal);
+document.querySelector("#advanceButton").addEventListener("click", nextStage);
+document.querySelector("#dawnNextButton").addEventListener("click", nextStage);
+document.querySelector("#nightResultNextButton")?.addEventListener("click", nextStage);
+document.querySelector("#discussionNextButton").addEventListener("click", nextStage);
+document.querySelector("#voteResultNextButton")?.addEventListener("click", nextStage);
+document.querySelector("#speechButton").addEventListener("click", submitSpeech);
+document.querySelector("#voteButton").addEventListener("click", submitVote);

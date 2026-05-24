@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "werewolf-langgraph"
+version = "0.1.0"
+description = "LangGraph multi-agent Werewolf game"
+requires-python = ">=3.9"
+dependencies = [
+    "langgraph>=0.2.0",
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "python-dotenv>=1.0.1",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+]
+
+[project.scripts]
+werewolf-check-deepseek = "werewolf_langgraph.check_deepseek:main"
+werewolf-web = "werewolf_langgraph.web:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
