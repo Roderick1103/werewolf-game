@@ -899,6 +899,23 @@ function showNameStatus(message) {
   }
 }
 
+function markPosterLoaded() {
+  const startContent = document.querySelector(".start-content");
+  if (!startContent) return;
+  startContent.classList.remove("poster-loading");
+  startContent.classList.add("poster-loaded");
+}
+
+const poster = document.querySelector("#openingPoster");
+if (poster) {
+  if (poster.complete && poster.naturalWidth > 0) {
+    markPosterLoaded();
+  } else {
+    poster.addEventListener("load", markPosterLoaded, { once: true });
+    poster.addEventListener("error", markPosterLoaded, { once: true });
+  }
+}
+
 document.querySelector("#startButton").addEventListener("click", showNameModal);
 document.querySelector("#confirmNameButton").addEventListener("click", startGame);
 document.querySelector("#cancelNameButton").addEventListener("click", hideNameModal);

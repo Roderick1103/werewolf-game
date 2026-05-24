@@ -58,6 +58,30 @@ button {
   width: min(100%, 1440px);
 }
 
+.poster-loading-panel {
+  align-items: center;
+  aspect-ratio: 16 / 9;
+  background:
+    linear-gradient(135deg, rgba(10, 26, 82, 0.72), rgba(16, 9, 48, 0.9)),
+    radial-gradient(circle at 50% 22%, rgba(255, 221, 112, 0.16), transparent 26%);
+  border: 1px solid rgba(255, 230, 168, 0.14);
+  border-radius: 8px;
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.62);
+  color: rgba(245, 239, 231, 0.72);
+  display: grid;
+  font-size: 16px;
+  font-weight: 800;
+  inset: 0;
+  justify-items: center;
+  max-height: calc(100vh - 36px);
+  opacity: 1;
+  place-items: center;
+  position: absolute;
+  transition: opacity 220ms ease;
+  width: 100%;
+  z-index: 2;
+}
+
 .opening-poster {
   aspect-ratio: 16 / 9;
   border-radius: 8px;
@@ -66,7 +90,23 @@ button {
   height: auto;
   max-height: calc(100vh - 36px);
   object-fit: contain;
+  opacity: 1;
+  transition: opacity 220ms ease;
   width: 100%;
+}
+
+.start-content.poster-loading .opening-poster,
+.start-content.poster-loading .poster-controls {
+  opacity: 0;
+}
+
+.start-content.poster-loaded .poster-loading-panel {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.start-content.poster-loaded .poster-controls {
+  opacity: 1;
 }
 
 .poster-controls {
@@ -78,6 +118,7 @@ button {
   pointer-events: none;
   position: absolute;
   transform: translateX(-50%);
+  transition: opacity 220ms ease;
   width: min(78%, 520px);
 }
 

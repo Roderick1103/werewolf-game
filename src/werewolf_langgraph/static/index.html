@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>卡通狼人杀</title>
+    <link rel="preload" as="image" href="/static/assets/uploaded-opening-poster.webp" type="image/webp" />
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
@@ -11,8 +12,12 @@
 
     <main>
       <section id="startScreen" class="start-screen">
-        <div class="start-content">
+        <div class="start-content poster-loading">
+          <div id="posterLoading" class="poster-loading-panel" role="status" aria-live="polite">
+            <span>正在加载开场海报...</span>
+          </div>
           <img
+            id="openingPoster"
             class="opening-poster"
             src="/static/assets/uploaded-opening-poster.webp"
             alt="卡通狼人杀开场海报，包含蜡笔小新、哆啦A梦、奶龙、海绵宝宝、猪猪侠、懒羊羊、小猪佩奇和柯南"

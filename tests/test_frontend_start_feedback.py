@@ -321,6 +321,25 @@ def test_cartoon_werewolf_opening_uses_poster_artwork():
     assert "cartoon-werewolf-opening-wide.png" not in css
 
 
+def test_opening_poster_waits_for_image_load_before_showing_controls():
+    source = APP_JS.read_text(encoding="utf-8")
+    index_html = APP_JS.with_name("index.html").read_text(encoding="utf-8")
+    css = APP_JS.with_name("styles.css").read_text(encoding="utf-8")
+
+    assert 'rel="preload"' in index_html
+    assert 'href="/static/assets/uploaded-opening-poster.webp"' in index_html
+    assert 'id="openingPoster"' in index_html
+    assert 'class="start-content poster-loading"' in index_html
+    assert 'id="posterLoading"' in index_html
+    assert "function markPosterLoaded()" in source
+    assert 'document.querySelector("#openingPoster")' in source
+    assert 'poster.complete' in source
+    assert 'poster.addEventListener("load", markPosterLoaded, { once: true });' in source
+    assert '.start-content.poster-loading .opening-poster' in css
+    assert '.start-content.poster-loaded .poster-controls' in css
+    assert '.poster-loading-panel' in css
+
+
 def test_game_screen_uses_separate_cartoon_background():
     css = APP_JS.with_name("styles.css").read_text(encoding="utf-8")
     asset = APP_JS.with_name("assets") / "game-cartoon-background.webp"
