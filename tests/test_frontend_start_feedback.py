@@ -22,6 +22,14 @@ def test_start_game_restores_button_when_room_creation_fails():
     assert catch_index < restore_index
 
 
+def test_start_game_busy_copy_says_prepare_game():
+    source = APP_JS.read_text(encoding="utf-8")
+
+    assert 'button.textContent = "开始游戏";' in source
+    assert '"正在准备游戏，请稍候..."' in source
+    assert '"正在创建房间..."' not in source
+
+
 def test_start_game_does_not_show_role_modal_automatically():
     source = APP_JS.read_text(encoding="utf-8")
     start_index = source.index("async function startGame()")
@@ -40,7 +48,7 @@ def test_setup_button_asks_player_to_view_role_first():
 def test_night_start_auto_advances_without_manual_wolf_button():
     source = APP_JS.read_text(encoding="utf-8")
 
-    assert 'const autoStages = ["night_start", "wolf_action", "seer_action", "witch_action"];' in source
+    assert 'const autoStages = ["night_start", "wolf_action", "seer_action", "witch_action", "hunter_shot"];' in source
     assert 'setVisible("#advanceButton", false);' in source
 
 
@@ -71,6 +79,16 @@ def test_witch_action_uses_two_page_steps():
     assert "buildWitchPoisonPrompt(flow)" in source
     assert "submitWitchAction(flow, poisonTargetId)" in source
     assert 'chooseWithConfirm("witch_action"' not in source
+
+
+def test_hunter_role_and_shot_choice_rendering_exist():
+    source = APP_JS.read_text(encoding="utf-8")
+
+    assert 'hunter: "猎人"' in source
+    assert 'hunter: "好人阵营"' in source
+    assert 'wait.kind === "hunter_shot"' in source
+    assert 'renderTargetChoices("#hunterAction", "hunter_shot", wait.candidates, "hunterAction")' in source
+    assert 'kind === "hunter_shot"' in source
 
 
 def test_witch_action_prompts_show_victim_and_poison_choice():
@@ -121,6 +139,34 @@ def test_start_game_uses_random_seat():
 
     assert 'human_seat: pickHumanSeat()' in source
     assert 'Math.floor(Math.random() * 9) + 1' in source
+
+
+def test_start_game_uses_custom_human_name_input():
+    source = APP_JS.read_text(encoding="utf-8")
+    index_html = APP_JS.with_name("index.html").read_text(encoding="utf-8")
+    poster_controls = index_html[
+        index_html.index('<div class="poster-controls">') : index_html.index('<section id="gameScreen"', index_html.index('<div class="poster-controls">'))
+    ]
+
+    assert 'id="humanNameInput"' in index_html
+    assert 'id="nameModal"' in index_html
+    assert 'id="confirmNameButton"' in index_html
+    assert 'id="cancelNameButton"' in index_html
+    assert 'id="humanNameInput"' not in poster_controls
+    assert 'document.querySelector("#humanNameInput").value.trim()' in source
+    assert "const humanName = customHumanName || DEFAULT_HUMAN_NAME;" in source
+    assert "human_name: humanName" in source
+
+
+def test_start_button_opens_name_modal_before_room_creation():
+    source = APP_JS.read_text(encoding="utf-8")
+
+    assert "function showNameModal()" in source
+    assert "function hideNameModal()" in source
+    assert 'document.querySelector("#startButton").addEventListener("click", showNameModal);' in source
+    assert 'document.querySelector("#confirmNameButton").addEventListener("click", startGame);' in source
+    assert 'document.querySelector("#cancelNameButton").addEventListener("click", hideNameModal);' in source
+    assert 'document.querySelector("#humanNameInput").focus();' in source
 
 
 def test_human_role_stays_hidden_until_viewed():
@@ -236,4 +282,44 @@ def test_nine_player_layout_and_candidate_grid():
     css = APP_JS.with_name("styles.css").read_text(encoding="utf-8")
 
     assert "repeat(9, minmax(0, 1fr))" in css
-    assert 'human_name: "打摆子的家伙"' in source
+    assert 'const DEFAULT_HUMAN_NAME = "打摆子的家伙";' in source
+
+
+def test_cartoon_werewolf_opening_uses_poster_artwork():
+    index_html = APP_JS.with_name("index.html").read_text(encoding="utf-8")
+    css = APP_JS.with_name("styles.css").read_text(encoding="utf-8")
+
+    assert "<title>卡通狼人杀</title>" in index_html
+    assert 'src="/static/assets/uploaded-opening-poster.png"' in index_html
+    assert 'class="poster-start-button"' in index_html
+    assert '<button id="startButton" class="poster-start-button" type="button"' in index_html
+    assert ".poster-start-button:hover" in css
+    assert "transform: scale(1.08);" in css
+    for character_name in [
+        "蜡笔小新",
+        "哆啦A梦",
+        "奶龙",
+        "海绵宝宝",
+        "猪猪侠",
+        "懒羊羊",
+        "小猪佩奇",
+        "柯南",
+    ]:
+        assert character_name in index_html
+
+    assert ".opening-poster" in css
+    assert ".poster-start-button" in css
+    assert "cartoon-werewolf-opening-wide.png" not in css
+
+
+def test_game_screen_uses_separate_cartoon_background():
+    css = APP_JS.with_name("styles.css").read_text(encoding="utf-8")
+    asset = APP_JS.with_name("assets") / "game-cartoon-background.png"
+
+    assert asset.exists()
+    assert ".game-screen::before" in css
+    assert 'url("/static/assets/game-cartoon-background.png")' in css
+    assert "filter: saturate(1.08);" in css
+    assert "background: rgba(13, 17, 26, 0.52);" in css
+    assert "backdrop-filter: blur(6px);" in css
+    assert "rgba(4, 7, 14, 0.72)" not in css

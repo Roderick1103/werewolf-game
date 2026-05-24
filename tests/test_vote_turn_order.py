@@ -1,4 +1,4 @@
-from werewolf_langgraph.game_graph import _day_vote, _enter_next_round, _next_vote_voter, _resolve_night, _vote_order
+from werewolf_langgraph.game_graph import _day_vote, _enter_next_round, _next_vote_voter, _resolve_hunter_shot, _resolve_night, _vote_order
 from werewolf_langgraph.state import GameState, Phase, Player, Role, Stage, VoteRecord, state_to_graph_state
 
 
@@ -130,6 +130,55 @@ def test_night_winner_enters_night_result_screen_before_game_over():
     assert result["stage"] == Stage.NIGHT_RESULT
     assert result["phase"] == Phase.GAME_OVER
     assert result["winner"] == "werewolf"
+
+
+def test_human_hunter_killed_at_night_shoots_before_winner():
+    game_state = GameState(
+        players=[
+            Player(id="1", name="wolf", role=Role.WEREWOLF),
+            Player(id="2", name="hunter", role=Role.HUNTER, is_human=True),
+            Player(id="3", name="villager", role=Role.VILLAGER),
+        ],
+        phase=Phase.NIGHT,
+        stage=Stage.WITCH_ACTION,
+        day=1,
+        night=1,
+        pending_wolf_target_id="2",
+    )
+    state = state_to_graph_state(game_state)
+
+    result = _resolve_night(state)
+
+    assert result["stage"] == Stage.HUNTER_SHOT
+    assert result["pending_hunter_id"] == "2"
+    assert result["pending_hunter_return_stage"] == Stage.NIGHT_RESULT
+    assert result["winner"] is None
+    assert "身份为猎人" in result["public_events"][-1].content
+
+
+def test_hunter_shot_can_kill_final_wolf_and_make_good_win():
+    game_state = GameState(
+        players=[
+            Player(id="1", name="wolf", role=Role.WEREWOLF),
+            Player(id="2", name="hunter", role=Role.HUNTER, is_alive=False),
+            Player(id="3", name="villager", role=Role.VILLAGER),
+        ],
+        phase=Phase.NIGHT,
+        stage=Stage.HUNTER_SHOT,
+        day=1,
+        night=1,
+        pending_hunter_id="2",
+        pending_hunter_return_stage=Stage.NIGHT_RESULT,
+    )
+    state = state_to_graph_state(game_state)
+
+    result = _resolve_hunter_shot(state, "1")
+
+    assert result["players"][0].is_alive is False
+    assert result["stage"] == Stage.NIGHT_RESULT
+    assert result["phase"] == Phase.GAME_OVER
+    assert result["winner"] == "good"
+
 
 def test_enter_next_round_advances_day_and_night():
     game_state = GameState(

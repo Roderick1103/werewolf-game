@@ -54,6 +54,8 @@ def _make_advance_stage(llm: BaseChatModel):
             return _seer_action(state, llm)
         if stage == Stage.WITCH_ACTION:
             return _witch_action(state, llm)
+        if stage == Stage.HUNTER_SHOT:
+            return _hunter_shot(state, llm)
         if stage == Stage.NIGHT_RESULT:
             return {"phase": Phase.GAME_OVER, "stage": Stage.GAME_OVER}
         if stage == Stage.DAWN:
@@ -80,6 +82,8 @@ def _enter_night(state: GraphState) -> dict[str, Any]:
         "pending_wolf_target_id": None,
         "pending_witch_save_id": None,
         "pending_witch_poison_id": None,
+        "pending_hunter_id": None,
+        "pending_hunter_return_stage": None,
         "public_events": [
             *state["public_events"],
             public_event(state, f"Night {night} begins.", Phase.NIGHT),
@@ -236,9 +240,29 @@ def _resolve_night(state: GraphState) -> dict[str, Any]:
         poison_target_id=poison_target,
         dead_player_ids=tuple(dead_ids),
     )
+    events = [*state["public_events"], public_event(state, _night_result_text(game_state, dead_ids), Phase.NIGHT)]
+    night_actions = [*state["night_actions"], action]
+    hunter = _dead_hunter(state["players"], dead_ids)
+    if hunter:
+        return {
+            "players": players,
+            "phase": Phase.NIGHT,
+            "stage": Stage.HUNTER_SHOT,
+            "winner": None,
+            "night_actions": night_actions,
+            "pending_wolf_target_id": None,
+            "pending_witch_save_id": None,
+            "pending_witch_poison_id": None,
+            "pending_hunter_id": hunter.id,
+            "pending_hunter_return_stage": Stage.NIGHT_RESULT,
+            "public_events": [
+                *events,
+                public_event(state, f"{hunter.name} 死亡，身份为猎人，可以发动技能。", Phase.NIGHT),
+            ],
+        }
+
     next_state = {**state, "players": players}
     winner = _winner(next_state)
-    events = [*state["public_events"], public_event(state, _night_result_text(game_state, dead_ids), Phase.NIGHT)]
 
     if winner:
         return {
@@ -246,10 +270,12 @@ def _resolve_night(state: GraphState) -> dict[str, Any]:
             "phase": Phase.GAME_OVER,
             "stage": Stage.NIGHT_RESULT,
             "winner": winner.value,
-            "night_actions": [*state["night_actions"], action],
+            "night_actions": night_actions,
             "pending_wolf_target_id": None,
             "pending_witch_save_id": None,
             "pending_witch_poison_id": None,
+            "pending_hunter_id": None,
+            "pending_hunter_return_stage": None,
             "public_events": [*events, public_event(state, f"{winner.value} camp wins.", Phase.GAME_OVER)],
         }
 
@@ -257,12 +283,89 @@ def _resolve_night(state: GraphState) -> dict[str, Any]:
         "players": players,
         "phase": Phase.DAY_DISCUSSION,
         "stage": Stage.DAWN,
-        "night_actions": [*state["night_actions"], action],
+        "night_actions": night_actions,
         "pending_wolf_target_id": None,
         "pending_witch_save_id": None,
         "pending_witch_poison_id": None,
+        "pending_hunter_id": None,
+        "pending_hunter_return_stage": None,
         "public_events": events,
     }
+
+
+def _hunter_shot(state: GraphState, llm: BaseChatModel) -> dict[str, Any]:
+    game_state = graph_state_to_game_state(state)
+    hunter_id = state["pending_hunter_id"]
+    if not hunter_id:
+        return _finish_after_hunter_shot(state)
+
+    hunter = get_player(game_state, hunter_id)
+    candidates = [player for player in living_players(game_state) if player.id != hunter_id]
+    if not candidates:
+        return _finish_after_hunter_shot(state)
+
+    if hunter.is_human:
+        payload = interrupt(
+            interrupt_payload(
+                "hunter_shot",
+                "请选择猎人死亡时要带走的玩家。",
+                [_candidate(player) for player in candidates],
+            )
+        )
+        target_id = _valid_target(payload, candidates)
+    else:
+        target_id = _choose_ai_hunter_target(llm, game_state, hunter, candidates)
+
+    return _resolve_hunter_shot(state, target_id)
+
+
+def _resolve_hunter_shot(state: GraphState, target_id: str) -> dict[str, Any]:
+    game_state = graph_state_to_game_state(state)
+    candidates = [player for player in living_players(game_state) if player.id != state["pending_hunter_id"]]
+    if not candidates:
+        return _finish_after_hunter_shot(state)
+
+    valid_target_id = _valid_target({"target_id": target_id}, candidates)
+    target = get_player(game_state, valid_target_id)
+    hunter = get_player(game_state, state["pending_hunter_id"]) if state["pending_hunter_id"] else None
+    next_state = {
+        **state,
+        "players": set_players_alive(state["players"], {valid_target_id}),
+        "pending_hunter_id": None,
+        "public_events": [
+            *state["public_events"],
+            public_event(state, f"{hunter.name if hunter else 'Hunter'} shot {target.name}.", state["phase"]),
+        ],
+    }
+    return _finish_after_hunter_shot(next_state)
+
+
+def _finish_after_hunter_shot(state: GraphState) -> dict[str, Any]:
+    winner = _winner(state)
+    return_stage = state["pending_hunter_return_stage"] or state["stage"]
+    base = {
+        "players": state["players"],
+        "pending_hunter_id": None,
+        "pending_hunter_return_stage": None,
+        "pending_wolf_target_id": None,
+        "pending_witch_save_id": None,
+        "pending_witch_poison_id": None,
+        "public_events": state["public_events"],
+    }
+    if winner:
+        return {
+            **base,
+            "phase": Phase.GAME_OVER,
+            "stage": return_stage,
+            "winner": winner.value,
+            "public_events": [
+                *state["public_events"],
+                public_event(state, f"{winner.value} camp wins.", Phase.GAME_OVER),
+            ],
+        }
+    if return_stage == Stage.NIGHT_RESULT:
+        return {**base, "phase": Phase.DAY_DISCUSSION, "stage": Stage.DAWN, "winner": None}
+    return {**base, "phase": Phase.DAY_VOTE, "stage": Stage.DAY_VOTE_RESULT, "winner": None}
 
 
 def _enter_day_discussion(state: GraphState) -> dict[str, Any]:
@@ -368,13 +471,34 @@ def _day_vote(state: GraphState, llm: BaseChatModel) -> dict[str, Any]:
     today_votes = [vote for vote in votes if vote.day == state["day"]]
     executed_id = Counter(vote.target_id for vote in today_votes).most_common(1)[0][0]
     players = set_players_alive(state["players"], {executed_id})
-    next_state = {**state, "players": players}
-    winner = _winner(next_state)
     executed = get_player(game_state, executed_id)
     events = [
         *state["public_events"],
         public_event(state, f"{executed.name} 被放逐出局。", Phase.DAY_VOTE),
     ]
+
+    if executed.role == Role.HUNTER:
+        return {
+            "players": players,
+            "phase": Phase.DAY_VOTE,
+            "stage": Stage.HUNTER_SHOT,
+            "day": state["day"],
+            "night": state["night"],
+            "votes": votes,
+            "winner": None,
+            "pending_wolf_target_id": None,
+            "pending_witch_save_id": None,
+            "pending_witch_poison_id": None,
+            "pending_hunter_id": executed.id,
+            "pending_hunter_return_stage": Stage.DAY_VOTE_RESULT,
+            "public_events": [
+                *events,
+                public_event(state, f"{executed.name} 死亡，身份为猎人，可以发动技能。", Phase.DAY_VOTE),
+            ],
+        }
+
+    next_state = {**state, "players": players}
+    winner = _winner(next_state)
 
     if winner:
         return {
@@ -388,6 +512,8 @@ def _day_vote(state: GraphState, llm: BaseChatModel) -> dict[str, Any]:
             "pending_wolf_target_id": None,
             "pending_witch_save_id": None,
             "pending_witch_poison_id": None,
+            "pending_hunter_id": None,
+            "pending_hunter_return_stage": None,
             "public_events": [*events, public_event(state, f"{winner.value} camp wins.", Phase.GAME_OVER)],
         }
 
@@ -401,6 +527,8 @@ def _day_vote(state: GraphState, llm: BaseChatModel) -> dict[str, Any]:
         "pending_wolf_target_id": None,
         "pending_witch_save_id": None,
         "pending_witch_poison_id": None,
+        "pending_hunter_id": None,
+        "pending_hunter_return_stage": None,
         "public_events": events,
     }
 
@@ -433,6 +561,19 @@ def _winner(state: GraphState) -> Optional[Camp]:
     if good <= wolves:
         return Camp.WEREWOLF
     return None
+
+
+def _dead_hunter(players: list[Player], dead_player_ids: list[str]) -> Optional[Player]:
+    return next((player for player in players if player.id in dead_player_ids and player.role == Role.HUNTER), None)
+
+
+def _choose_ai_hunter_target(llm: BaseChatModel, game_state, hunter: Player, candidates: list[Player]) -> str:
+    agents = create_role_agents(llm, game_state)
+    try:
+        return agents[hunter.id].choose_hunter_shot(game_state, [player.id for player in candidates]).target_id
+    except Exception:
+        wolf = next((player for player in candidates if player.role == Role.WEREWOLF), None)
+        return (wolf or candidates[0]).id
 
 
 def _first_alive_player(players: list[Player], role: Role) -> Optional[Player]:

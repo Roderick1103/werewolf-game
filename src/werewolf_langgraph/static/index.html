@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>狼人杀</title>
+    <title>卡通狼人杀</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
@@ -11,11 +11,16 @@
 
     <main>
       <section id="startScreen" class="start-screen">
-        <div class="moon"></div>
         <div class="start-content">
-          <h1>狼人杀</h1>
-          <button id="startButton" class="primary-action" type="button">创建房间 / 开始游戏</button>
-          <p id="startStatus" class="start-status" role="status" aria-live="polite"></p>
+          <img
+            class="opening-poster"
+            src="/static/assets/uploaded-opening-poster.png"
+            alt="卡通狼人杀开场海报，包含蜡笔小新、哆啦A梦、奶龙、海绵宝宝、猪猪侠、懒羊羊、小猪佩奇和柯南"
+          />
+          <div class="poster-controls">
+            <button id="startButton" class="poster-start-button" type="button" aria-label="开始游戏">开始游戏</button>
+            <p id="startStatus" class="start-status" role="status" aria-live="polite"></p>
+          </div>
         </div>
       </section>
 
@@ -85,6 +90,7 @@
             <p class="phase-mark">夜晚结果</p>
             <h3>本夜结局</h3>
             <p id="nightResultSummary">本夜结果已经公布。</p>
+            <div id="hunterAction" class="choice-box"></div>
             <button id="nightResultNextButton" class="primary-action" type="button">查看最终胜负</button>
           </article>
 
@@ -130,6 +136,21 @@
         </section>
       </section>
     </main>
+
+    <div id="nameModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="nameModalTitle">
+      <div class="name-card">
+        <p class="role-card-kicker">入场登记</p>
+        <h2 id="nameModalTitle">起个名字</h2>
+        <label class="name-field" for="humanNameInput">
+          <span>你的名字</span>
+          <input id="humanNameInput" maxlength="16" autocomplete="nickname" placeholder="打摆子的家伙" />
+        </label>
+        <div class="name-actions">
+          <button id="cancelNameButton" class="secondary-action" type="button">返回</button>
+          <button id="confirmNameButton" class="primary-action" type="button">确认身份</button>
+        </div>
+      </div>
+    </div>
 
     <div id="roleModal" class="modal hidden" role="dialog" aria-modal="true">
       <div class="role-card">

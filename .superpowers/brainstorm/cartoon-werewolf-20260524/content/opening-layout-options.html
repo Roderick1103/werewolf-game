@@ -1,0 +1,205 @@
+<style>
+  .cartoon-preview {
+    color: #1b1c22;
+  }
+
+  .cartoon-preview h2 {
+    color: #10131b;
+    font-size: 34px;
+    margin-bottom: 8px;
+  }
+
+  .cartoon-preview .subtitle {
+    color: #5d6678;
+    font-size: 16px;
+    margin-bottom: 22px;
+  }
+
+  .layout-cards {
+    display: grid;
+    gap: 18px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .layout-option {
+    background: #ffffff;
+    border: 2px solid #e4e8f2;
+    border-radius: 8px;
+    cursor: pointer;
+    overflow: hidden;
+    transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  }
+
+  .layout-option:hover {
+    border-color: #ffb83f;
+    box-shadow: 0 14px 34px rgba(18, 23, 34, 0.12);
+    transform: translateY(-2px);
+  }
+
+  .option-head {
+    background: #10131b;
+    color: #fff;
+    font-weight: 900;
+    padding: 12px 14px;
+  }
+
+  .mini-screen {
+    aspect-ratio: 16 / 10;
+    background: linear-gradient(145deg, #fcf7e8, #dff5ff);
+    display: grid;
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .title-line {
+    align-self: center;
+    color: #202431;
+    font-size: 20px;
+    font-weight: 900;
+    text-align: center;
+  }
+
+  .avatar-grid {
+    display: grid;
+    gap: 6px;
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .avatar {
+    align-items: center;
+    aspect-ratio: 1;
+    border: 2px solid rgba(255,255,255,0.8);
+    border-radius: 8px;
+    color: #fff;
+    display: grid;
+    font-size: 12px;
+    font-weight: 900;
+    place-items: center;
+    text-align: center;
+  }
+
+  .stage-row {
+    align-items: end;
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+  }
+
+  .stage-row .avatar {
+    width: 38px;
+  }
+
+  .stage-row .avatar:nth-child(2n) {
+    transform: translateY(-14px);
+  }
+
+  .poster-grid {
+    display: grid;
+    gap: 5px;
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .poster-grid .avatar:first-child {
+    grid-column: span 2;
+    grid-row: span 2;
+  }
+
+  .c1 { background: #ef4f45; }
+  .c2 { background: #248ce8; }
+  .c3 { background: #ffd246; color: #202431; }
+  .c4 { background: #f3ca56; color: #202431; }
+  .c5 { background: #df3d32; }
+  .c6 { background: #8bd35f; color: #202431; }
+  .c7 { background: #f3a6bc; color: #202431; }
+  .c8 { background: #3158d4; }
+
+  .layout-body {
+    padding: 14px;
+  }
+
+  .layout-body h3 {
+    margin: 0 0 8px;
+  }
+
+  .layout-body p {
+    color: #5d6678;
+    line-height: 1.55;
+    margin: 0;
+  }
+
+  @media (max-width: 900px) {
+    .layout-cards {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<section class="cartoon-preview">
+  <h2>卡通狼人杀开场页布局选择</h2>
+  <p class="subtitle">目标：首屏直接看到“卡通狼人杀”和八个角色。这里先用彩色名字块表示角色，后续可替换为你提供的角色图片。</p>
+
+  <div class="layout-cards">
+    <article class="layout-option" data-choice="grid" onclick="toggleSelect(this)">
+      <div class="option-head">A. 八宫格主视觉</div>
+      <div class="mini-screen">
+        <div class="title-line">卡通狼人杀</div>
+        <div class="avatar-grid">
+          <div class="avatar c1">小新</div>
+          <div class="avatar c2">哆啦</div>
+          <div class="avatar c3">奶龙</div>
+          <div class="avatar c4">海绵</div>
+          <div class="avatar c5">猪侠</div>
+          <div class="avatar c6">懒羊</div>
+          <div class="avatar c7">佩奇</div>
+          <div class="avatar c8">柯南</div>
+        </div>
+      </div>
+      <div class="layout-body">
+        <h3>最清楚</h3>
+        <p>八个角色同等露出，适合“开头那里要显示这八个角色”的核心诉求。</p>
+      </div>
+    </article>
+
+    <article class="layout-option" data-choice="stage" onclick="toggleSelect(this)">
+      <div class="option-head">B. 舞台队列</div>
+      <div class="mini-screen">
+        <div class="stage-row">
+          <div class="avatar c1">小新</div>
+          <div class="avatar c2">哆啦</div>
+          <div class="avatar c3">奶龙</div>
+          <div class="avatar c4">海绵</div>
+          <div class="avatar c5">猪侠</div>
+          <div class="avatar c6">懒羊</div>
+          <div class="avatar c7">佩奇</div>
+          <div class="avatar c8">柯南</div>
+        </div>
+        <div class="title-line">卡通狼人杀</div>
+      </div>
+      <div class="layout-body">
+        <h3>更活泼</h3>
+        <p>像全员登场海报，标题和按钮放下方；移动端需要做横向换行。</p>
+      </div>
+    </article>
+
+    <article class="layout-option" data-choice="poster" onclick="toggleSelect(this)">
+      <div class="option-head">C. 海报拼贴</div>
+      <div class="mini-screen">
+        <div class="title-line">卡通狼人杀</div>
+        <div class="poster-grid">
+          <div class="avatar c1">蜡笔小新</div>
+          <div class="avatar c2">哆啦</div>
+          <div class="avatar c3">奶龙</div>
+          <div class="avatar c4">海绵</div>
+          <div class="avatar c5">猪侠</div>
+          <div class="avatar c6">懒羊</div>
+          <div class="avatar c7">佩奇</div>
+          <div class="avatar c8">柯南</div>
+        </div>
+      </div>
+      <div class="layout-body">
+        <h3>更有海报感</h3>
+        <p>主次更强，但会让某些角色更大，可能不如八宫格公平直观。</p>
+      </div>
+    </article>
+  </div>
+</section>

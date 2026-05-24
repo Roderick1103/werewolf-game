@@ -54,6 +54,13 @@ class WitchDecision:
     reason: str
 
 
+@dataclass(frozen=True)
+class HunterShotDecision:
+    hunter_id: str
+    target_id: str
+    reason: str
+
+
 def _extract_json(text: str) -> dict[str, Any]:
     try:
         value = json.loads(text)
@@ -572,6 +579,25 @@ class RoleAgent:
             poison_target_id=poison_target_id,
             reason=reason.strip(),
         )
+
+    def choose_hunter_shot(self, state: GameState, candidates: list[str]) -> HunterShotDecision:
+        if self.player.role != Role.HUNTER:
+            raise ValueError("Only the hunter can fire a hunter shot.")
+        if not candidates:
+            raise ValueError("No valid hunter shot candidates.")
+
+        task = (
+            "You died as the hunter. Choose one alive player to take down with your final shot.\n"
+            f"Candidate ids: {', '.join(candidates)}\n"
+            f"Public players:\n{_public_summary(state)}\n\n"
+            f"Recent public events:\n{_recent_public_events(state)}"
+        )
+        data = self._ask_json(task, '{"target_id": "player id", "reason": "short Chinese reason"}')
+        target_id = _pick_valid_id(data.get("target_id"), candidates)
+        reason = data.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            reason = "Taking the most suspicious player down with the final hunter shot."
+        return HunterShotDecision(hunter_id=self.player.id, target_id=target_id, reason=reason.strip())
 
 
 def create_role_agents(llm: BaseChatModel, state: GameState) -> dict[str, RoleAgent]:

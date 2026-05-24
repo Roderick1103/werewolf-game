@@ -9,6 +9,7 @@ class Role(str, Enum):
     WEREWOLF = "werewolf"
     SEER = "seer"
     WITCH = "witch"
+    HUNTER = "hunter"
     VILLAGER = "villager"
 
 
@@ -37,6 +38,7 @@ class Stage(str, Enum):
     DAY_DISCUSSION_DONE = "day_discussion_done"
     DAY_VOTE = "day_vote"
     DAY_VOTE_RESULT = "day_vote_result"
+    HUNTER_SHOT = "hunter_shot"
     GAME_OVER = "game_over"
 
 
@@ -44,6 +46,7 @@ ROLE_LABELS: dict[Role, str] = {
     Role.WEREWOLF: "Werewolf",
     Role.SEER: "Seer",
     Role.WITCH: "Witch",
+    Role.HUNTER: "Hunter",
     Role.VILLAGER: "Villager",
 }
 
@@ -124,6 +127,8 @@ class GameState:
     pending_wolf_target_id: Optional[str] = None
     pending_witch_save_id: Optional[str] = None
     pending_witch_poison_id: Optional[str] = None
+    pending_hunter_id: Optional[str] = None
+    pending_hunter_return_stage: Optional[Stage] = None
 
 
 class GraphState(TypedDict):
@@ -142,6 +147,8 @@ class GraphState(TypedDict):
     pending_wolf_target_id: Optional[str]
     pending_witch_save_id: Optional[str]
     pending_witch_poison_id: Optional[str]
+    pending_hunter_id: Optional[str]
+    pending_hunter_return_stage: Optional[Stage]
 
 
 def create_initial_state(players: list[Player]) -> GameState:
@@ -185,6 +192,8 @@ def state_to_graph_state(state: GameState) -> GraphState:
         "pending_wolf_target_id": state.pending_wolf_target_id,
         "pending_witch_save_id": state.pending_witch_save_id,
         "pending_witch_poison_id": state.pending_witch_poison_id,
+        "pending_hunter_id": state.pending_hunter_id,
+        "pending_hunter_return_stage": state.pending_hunter_return_stage,
     }
 
 
@@ -206,6 +215,8 @@ def graph_state_to_game_state(state: GraphState) -> GameState:
         pending_wolf_target_id=state["pending_wolf_target_id"],
         pending_witch_save_id=state["pending_witch_save_id"],
         pending_witch_poison_id=state["pending_witch_poison_id"],
+        pending_hunter_id=state["pending_hunter_id"],
+        pending_hunter_return_stage=state["pending_hunter_return_stage"],
     )
 
 

@@ -39,7 +39,7 @@ DEFAULT_ROLES = [
     Role.WEREWOLF,
     Role.SEER,
     Role.WITCH,
-    Role.VILLAGER,
+    Role.HUNTER,
     Role.VILLAGER,
     Role.VILLAGER,
     Role.VILLAGER,
@@ -203,7 +203,7 @@ def _serialize_room(room: Room) -> dict[str, Any]:
         "wolf_teammates": _serialize_wolf_teammates(game_state.players, human),
         "waiting_for": room.waiting_for,
         "players": [
-            _serialize_player(player, reveal_role=player.id == room.human_id or bool(game_state.winner))
+            _serialize_player(player, reveal_role=_should_reveal_role(player, room.human_id, bool(game_state.winner)))
             for player in game_state.players
         ],
         "speeches": [_serialize_dataclass(record) for record in game_state.speeches],
@@ -221,6 +221,10 @@ def _serialize_player(player: Player, reveal_role: bool) -> dict[str, Any]:
         "is_human": player.is_human,
         "is_alive": player.is_alive,
     }
+
+
+def _should_reveal_role(player: Player, human_id: str, game_over: bool) -> bool:
+    return player.id == human_id or game_over or (player.role == Role.HUNTER and not player.is_alive)
 
 
 def _serialize_wolf_teammates(players: list[Player], human: Player) -> list[dict[str, str]]:

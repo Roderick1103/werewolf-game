@@ -11,12 +11,14 @@ let pendingChoice = null;
 let pendingSeerReveal = null;
 let witchActionFlow = null;
 
+const DEFAULT_HUMAN_NAME = "打摆子的家伙";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const roleNames = {
   werewolf: "狼人",
   seer: "预言家",
   witch: "女巫",
+  hunter: "猎人",
   villager: "平民",
   hidden: "身份未知",
 };
@@ -25,6 +27,7 @@ const campNames = {
   werewolf: "狼人阵营",
   seer: "好人阵营",
   witch: "好人阵营",
+  hunter: "好人阵营",
   villager: "好人阵营",
 };
 
@@ -34,6 +37,7 @@ const stageCopy = {
   wolf_action: ["狼人行动", "狼人正在选择今晚的目标", "phaseWolf"],
   seer_action: ["预言家查验", "预言家正在查看一名玩家的身份", "phaseSeer"],
   witch_action: ["女巫用药", "女巫正在决定是否使用药剂", "phaseWitch"],
+  hunter_shot: ["猎人开枪", "猎人正在选择带走一名玩家", "phaseNightResult"],
   dawn: ["天亮了", "清晨的钟声响起", "phaseDawn"],
   night_result: ["夜晚结果", "查看本夜结局", "phaseNightResult"],
   day_discussion: ["白天讨论", "轮流发言", "phaseDiscussion"],
@@ -42,6 +46,17 @@ const stageCopy = {
   day_vote_result: ["放逐结果", "查看投票结局", "phaseVoteResult"],
   game_over: ["胜负判定", "游戏结束", "phaseResult"],
 };
+
+function showNameModal() {
+  if (room) return;
+  const modal = document.querySelector("#nameModal");
+  modal.classList.remove("hidden");
+  document.querySelector("#humanNameInput").focus();
+}
+
+function hideNameModal() {
+  document.querySelector("#nameModal").classList.add("hidden");
+}
 
 async function startGame() {
   if (room) return;
@@ -56,10 +71,12 @@ async function startGame() {
   voteAdvanceTimer = null;
   setStartButtonState("starting");
   try {
+    const customHumanName = document.querySelector("#humanNameInput").value.trim();
+    const humanName = customHumanName || DEFAULT_HUMAN_NAME;
     const response = await fetch("/api/rooms", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ human_name: "打摆子的家伙", human_seat: pickHumanSeat() }),
+      body: JSON.stringify({ human_name: humanName, human_seat: pickHumanSeat() }),
     });
     const nextRoom = await response.json();
     if (!response.ok) throw new Error(nextRoom.detail || "create room failed");
@@ -69,6 +86,7 @@ async function startGame() {
     renderedSpeechKeys = new Set();
 
     await withFog(async () => {
+      hideNameModal();
       document.querySelector("#startScreen").classList.add("hidden");
       document.querySelector("#gameScreen").classList.remove("hidden");
       renderRoom();
@@ -320,11 +338,12 @@ function renderWaitingAction() {
   }
   if (wait.kind === "wolf_kill") renderTargetChoices("#wolfAction", "wolf_kill", wait.candidates, "wolfAction");
   if (wait.kind === "seer_check") renderTargetChoices("#seerAction", "seer_check", wait.candidates, "seerAction");
+  if (wait.kind === "hunter_shot") renderTargetChoices("#hunterAction", "hunter_shot", wait.candidates, "hunterAction");
   if (wait.kind === "witch_action") renderWitchChoices(wait);
 }
 
 function clearActionBoxes() {
-  ["#wolfAction", "#seerAction", "#witchAction"].forEach((selector) => {
+  ["#wolfAction", "#seerAction", "#witchAction", "#hunterAction"].forEach((selector) => {
     document.querySelector(selector).innerHTML = "";
   });
 }
@@ -477,10 +496,14 @@ function chooseWithConfirm(kind, candidate, options = {}) {
 
 function renderChoiceConfirmation(wait) {
   const { kind, candidate, options } = pendingChoice;
-  const boxSelector = kind === "wolf_kill" ? "#wolfAction" : "#seerAction";
+  const boxSelector = kind === "wolf_kill" ? "#wolfAction" : kind === "hunter_shot" ? "#hunterAction" : "#seerAction";
   const box = document.querySelector(boxSelector);
   const label = candidate ? `${candidate.id}. ${candidate.name}` : "未选择目标";
-  const prompt = kind === "wolf_kill" ? `确认今晚袭击 ${label} 吗？` : `确认查验 ${label} 吗？`;
+  const prompt = kind === "wolf_kill"
+    ? `确认今晚袭击 ${label} 吗？`
+    : kind === "hunter_shot"
+      ? `确认猎人带走 ${label} 吗？`
+      : `确认查验 ${label} 吗？`;
 
   box.innerHTML = `
     <p class="status-line">${prompt}</p>
@@ -496,7 +519,7 @@ function renderChoiceConfirmation(wait) {
     if (!activeChoice) return;
 
     const activeCandidate = activeChoice.candidate;
-    if (activeChoice.kind === "wolf_kill" || activeChoice.kind === "seer_check") {
+    if (activeChoice.kind === "wolf_kill" || activeChoice.kind === "seer_check" || activeChoice.kind === "hunter_shot") {
       submitAction({ kind: activeChoice.kind, target_id: activeCandidate.id });
     }
   });
@@ -777,6 +800,9 @@ function roleChoiceText(selectorName) {
   if (currentStage === "wolf_action" && selectorName === "wolfAction") {
     return room.human_role === "werewolf" ? "请选择今晚要袭击的目标。" : "狼人正在选择今晚的目标。";
   }
+  if (currentStage === "hunter_shot" && selectorName === "hunterAction") {
+    return "猎人死亡，请选择一名玩家带走。";
+  }
   if (currentStage === "seer_action" && selectorName === "seerAction") {
     return room.human_role === "seer" ? "请选择要查验的玩家，查验后会立即显示身份。" : "预言家正在查验一名玩家的身份。";
   }
@@ -805,7 +831,7 @@ function scheduleNightAutoAdvance() {
   clearTimeout(autoAdvanceTimer);
   clearTimeout(discussionAdvanceTimer);
   clearTimeout(voteAdvanceTimer);
-  const autoStages = ["night_start", "wolf_action", "seer_action", "witch_action"];
+  const autoStages = ["night_start", "wolf_action", "seer_action", "witch_action", "hunter_shot"];
   if (!room || room.waiting_for || room.winner || pendingSeerReveal || !autoStages.includes(currentStage)) return;
   autoAdvanceTimer = setTimeout(() => {
     if (!room || room.waiting_for || room.winner || pendingSeerReveal || currentStage !== room.stage) return;
@@ -838,11 +864,14 @@ function setBusy(isBusy) {
 function setStartButtonState(state) {
   const button = document.querySelector("#startButton");
   if (!button) return;
+  const confirmButton = document.querySelector("#confirmNameButton");
   const isStarting = state === "starting";
   button.disabled = isStarting;
+  if (confirmButton) confirmButton.disabled = isStarting;
   button.setAttribute("aria-busy", String(isStarting));
-  button.textContent = isStarting ? "正在创建房间..." : "创建房间 / 开始游戏";
-  showStartStatus(isStarting ? "正在创建房间，请稍候..." : "");
+  button.textContent = "开始游戏";
+  if (confirmButton) confirmButton.textContent = isStarting ? "正在确认..." : "确认身份";
+  showStartStatus(isStarting ? "正在准备游戏，请稍候..." : "");
 }
 
 function pickHumanSeat() {
@@ -860,7 +889,9 @@ function showStartStatus(message) {
   }
 }
 
-document.querySelector("#startButton").addEventListener("click", startGame);
+document.querySelector("#startButton").addEventListener("click", showNameModal);
+document.querySelector("#confirmNameButton").addEventListener("click", startGame);
+document.querySelector("#cancelNameButton").addEventListener("click", hideNameModal);
 document.querySelector("#confirmRoleButton").addEventListener("click", showRoleModal);
 document.querySelector("#closeRoleModalButton").addEventListener("click", closeRoleModal);
 document.querySelector("#advanceButton").addEventListener("click", nextStage);
