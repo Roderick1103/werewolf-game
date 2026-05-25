@@ -21,6 +21,7 @@ const roleNames = {
   hunter: "猎人",
   villager: "平民",
   hidden: "身份未知",
+  pending: "身份待查看",
 };
 
 const campNames = {
@@ -584,7 +585,7 @@ function renderPlayers(activeSpeakerId = null) {
     card.className = "player";
     if (!player.is_alive) card.classList.add("dead");
     if (player.id === activeSpeakerId) card.classList.add("active-speaker");
-    const roleLabel = player.is_human && !roleRevealed ? "身份待查看" : roleNames[player.role] || player.role;
+    const roleLabel = roleNames[visiblePlayerRole(player)] || visiblePlayerRole(player);
     const avatarUrl = avatarForPlayer(player);
     if (avatarUrl) {
       const avatar = document.createElement("img");
@@ -609,6 +610,12 @@ function renderPlayers(activeSpeakerId = null) {
     card.append(name, role, status);
     container.appendChild(card);
   }
+}
+
+function visiblePlayerRole(player) {
+  if (player.is_human && !roleRevealed) return "pending";
+  if (!roleRevealed && player.role === "werewolf" && player.id !== room.human_id) return "hidden";
+  return player.role;
 }
 
 function renderVoteTargets() {

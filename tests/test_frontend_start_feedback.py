@@ -183,7 +183,17 @@ def test_human_role_stays_hidden_until_viewed():
 
     assert "let roleRevealed = false;" in source
     assert "roleRevealed = true;" in source
-    assert 'player.is_human && !roleRevealed ? "身份待查看" : roleNames[player.role] || player.role' in source
+    assert 'if (player.is_human && !roleRevealed) return "pending";' in source
+    assert 'pending: "身份待查看",' in source
+
+
+def test_wolf_teammates_stay_hidden_until_role_is_confirmed():
+    source = APP_JS.read_text(encoding="utf-8")
+
+    assert "function visiblePlayerRole(player)" in source
+    assert 'if (player.is_human && !roleRevealed) return "pending";' in source
+    assert 'if (!roleRevealed && player.role === "werewolf" && player.id !== room.human_id) return "hidden";' in source
+    assert "const roleLabel = roleNames[visiblePlayerRole(player)] || visiblePlayerRole(player);" in source
 
 
 def test_day_discussion_advances_live_instead_of_replay_after_completion():
