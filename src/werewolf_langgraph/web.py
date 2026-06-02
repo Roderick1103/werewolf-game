@@ -100,8 +100,10 @@ def create_app() -> FastAPI:
         return response
 
     @app.get("/", response_class=HTMLResponse)
-    def index() -> str:
-        with open(STATIC_DIR / "index.html", "r", encoding="utf-8") as file:
+    def index(request: Request) -> str:
+        host = request.headers.get("host", "").split(":", maxsplit=1)[0].lower()
+        page = "index.html" if host.startswith("werewolf.") else "home.html"
+        with open(STATIC_DIR / page, "r", encoding="utf-8") as file:
             return file.read()
 
     @app.post("/api/rooms")
